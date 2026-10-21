@@ -194,7 +194,8 @@ def mattress_sizes(rec, stock):
         arts = [x.get("a") for x in (v.get("arts") or [])] or [v.get("art")]
         if sum(K.stock_by_art(a, stock) for a in arts if a) > 0 and sz not in have:
             have.append(sz)
-    return have, alls
+    key = lambda z: tuple(int(x) for x in re.findall(r"\d+", z)) or (0,)   # 80×200, 90×200, 120×200 …
+    return sorted(have, key=key), alls
 
 
 def decide(n, cur_av, M, stock, fri=""):
@@ -236,13 +237,36 @@ def decide(n, cur_av, M, stock, fri=""):
 def new_desc(old, lines):
     t = str(old or "")
     # наш блок уже стоит (вчерашний файл / повторный прогон) — снимаем, чтобы не двоился
-    t = re.sub(r"^\s*<p><strong>(?:" + "|".join(map(re.escape, OUR_EMOJI)) + r").*?</p>\s*", "", t, flags=re.S)
+    t = re.sub(r"<p><strong>(?:" + "|".join(map(re.escape, OUR_EMOJI)) + r").*?</p>\s*", "", t, count=1, flags=re.S)
     for rx, rep in FIX + CLEAN:
         t = rx.sub(rep, t)
+    t = t.strip()
     if not lines:
-        return t.strip()
+        return t
     block = f"<p><strong>{lines[0]}</strong><br> {lines[1]}<br> {lines[2]}</p> "
-    return (block + t.strip()).strip()
+    return insert_block(t, block)
+
+
+NEW_PACK = re.compile(r"Нов\w*,?\s+в\s+разобранном", re.I)
+
+
+def insert_block(t, block):
+    """Заказчик 21.10: блок — ПОСЛЕ названия («… НОВЫЕ ТУМБЫ ПО ДОСТУПНОЙ ЦЕНЕ 👍»), прямо перед
+    «Новые в разобранном виде в упаковке». Нет такой строки — после первого абзаца (название)."""
+    m = NEW_PACK.search(t)
+    if m and m.start() < 1500:
+        pre = t[:m.start()]
+        if pre.count("<strong>") == pre.count("</strong>"):
+            if re.search(r"<p>\s*$", pre):                       # строка — отдельный абзац
+                i = pre.rstrip().rfind("<p>")
+                return t[:i] + block + t[i:]
+            br = re.search(r"(?:\s*<br\s*/?>)+\s*$", pre)
+            if br and pre.count("<p>") > pre.count("</p>"):       # строка внутри абзаца после переноса
+                return pre[:br.start()] + "</p> " + block + "<p>" + t[m.start():]
+    m = re.match(r"\s*<p>.*?</p>\s*", t, re.S)
+    if m and len(m.group(0)) < 700:
+        return t[:m.end()] + block + t[m.end():]
+    return block + t
 
 
 def main():
