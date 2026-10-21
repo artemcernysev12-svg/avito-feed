@@ -1,0 +1,4 @@
+_data/
+_proba*.xlsx
+*.tmp.xlsx
+__pycache__/
