@@ -69,8 +69,11 @@ def info(tok, ids):
     if not ids:
         return []
     try:
-        return call(tok, "/stock-management/1/info", {"item_ids": ids}, tries=2)["stocks"]
-    except urllib.error.HTTPError:
+        r = call(tok, "/stock-management/1/info", {"item_ids": ids}, tries=2)
+        if not isinstance(r, dict) or "stocks" not in r:          # 25.10: Авито ответил без «stocks» — делим дальше
+            raise ValueError("нет stocks")
+        return r["stocks"]
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError):
         if len(ids) == 1:
             return []
         h = len(ids) // 2
@@ -114,7 +117,8 @@ def main():
         sys.exit(2)
     M = json.load(open(a.map, encoding="utf-8"))["map"]
     tok = token()
-    if a.refresh_ids or not os.path.exists(IDS):
+    done_today = os.path.exists(IDS) and json.load(open(IDS, encoding="utf-8")).get("date") == str(today)
+    if (a.refresh_ids and not done_today) or not os.path.exists(IDS):   # почасовые прогоны: обновляем раз в день
         all_ids = [int(n) for n in M]
         got = []
         for i in range(0, len(all_ids), 50):
