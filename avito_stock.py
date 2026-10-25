@@ -117,15 +117,20 @@ def main():
         sys.exit(2)
     M = json.load(open(a.map, encoding="utf-8"))["map"]
     tok = token()
-    done_today = os.path.exists(IDS) and json.load(open(IDS, encoding="utf-8")).get("date") == str(today)
-    if (a.refresh_ids and not done_today) or not os.path.exists(IDS):   # почасовые прогоны: обновляем раз в день
-        all_ids = [int(n) for n in M]
+    saved = json.load(open(IDS, encoding="utf-8")) if os.path.exists(IDS) else {"ids": [], "no": []}
+    known = set(saved.get("ids", [])) | set(saved.get("no", []))
+    if (a.refresh_ids and saved.get("date") != str(today)) or not saved.get("ids"):
+        # 25.10: проверка всех 3440 по одному не влезала в 15 минут → проверяем только НОВЫЕ объявления, а тех, у кого
+        # количества нет, тоже запоминаем («no»); полный перебор — если списка ещё нет
+        cand = [int(n) for n in M if int(n) not in known]
         got = []
-        for i in range(0, len(all_ids), 50):
-            got += info(tok, all_ids[i:i + 50])
-        ids = sorted(x["item_id"] for x in got)
-        json.dump({"date": str(today), "ids": ids}, open(IDS, "w", encoding="utf-8"))
-        print(f"объявлений с количеством: {len(ids)} (из {len(all_ids)}) → {IDS}")
+        for i in range(0, len(cand), 50):
+            got += info(tok, cand[i:i + 50])
+        has = {x["item_id"] for x in got}
+        ids_all = sorted((set(saved.get("ids", [])) | has) & {int(n) for n in M})
+        no_all = sorted((set(saved.get("no", [])) | (set(cand) - has)) & {int(n) for n in M})
+        json.dump({"date": str(today), "ids": ids_all, "no": no_all}, open(IDS, "w", encoding="utf-8"))
+        print(f"проверено новых: {len(cand)}, с количеством +{len(has)}; всего с количеством {len(ids_all)}")
     ids = [i for i in json.load(open(IDS, encoding="utf-8"))["ids"] if str(i) in M]
     cur = {}
     for i in range(0, len(ids), 50):
